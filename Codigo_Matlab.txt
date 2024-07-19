@@ -1,0 +1,203 @@
+classdef final < matlab.apps.AppBase
+
+    % Properties that correspond to app components
+    properties (Access = public)
+        UIFigure                     matlab.ui.Figure
+        AlertaLamp                   matlab.ui.control.Lamp
+        AlertaLampLabel              matlab.ui.control.Label
+        HFJLabel                     matlab.ui.control.Label
+        CanalHumedadSwitch_2         matlab.ui.control.Switch
+        CanalHumedadSwitch_2Label    matlab.ui.control.Label
+        CanalTemperaturaSwitch       matlab.ui.control.Switch
+        CanalTemperaturaSwitchLabel  matlab.ui.control.Label
+        ControldeltiempoKnob         matlab.ui.control.Knob
+        ControldeltiempoKnobLabel    matlab.ui.control.Label
+        UIAxes2                      matlab.ui.control.UIAxes
+        UIAxes                       matlab.ui.control.UIAxes
+    end
+
+    % Creacion de la variable para el timer
+    properties (Access = private)
+        timerObj % timer object
+    end
+    
+    % Función para que actualice constantemente la gráfica
+    methods (Access = private)
+        
+        function actualizar(app)
+            %Función que recoge los valores del regulador
+            Puntos = app.ControldeltiempoKnob.Value;
+              
+            %Recolecta los ultimos nPuntos datos del ThingSpeak 
+            datos = thingSpeakRead(2598039, 'Fields', [1, 2], 'NumPoints', round(Puntos), 'OutputFormat', 'TimeTable');
+                    
+            % Define un vector con los tiempos del los datos recolectados
+            % la dimension de este vector depende de la perilla
+            x = datos.Timestamps;
+                   
+            %Define los ultimos parametros recolectados
+            tem = datos.Temperatura(end);
+            hum = datos.Humedad(end);
+        
+            % Estados para la muestra de graficas y activación del canal
+            %% Evalua si el canal de temperatura esta activo
+            switch app.CanalTemperaturaSwitch.Value
+                case 'On'
+                    cla(app.UIAxes, 'reset');
+                    f = datos.Temperatura;      % Obtiene datos de temperatura
+                    plot(app.UIAxes, x, f);     % Muestra la grafica de temperatura
+                    hold(app.UIAxes, 'on');
+                case 'Off'
+                    cla(app.UIAxes, 'reset');   % Elmina la grafica
+            end
+
+            %% Evalua si el canal de humedad esta activo
+            switch app.CanalHumedadSwitch_2.Value
+                case 'On'
+                    cla(app.UIAxes2, 'reset');
+                    g = datos.Humedad;          % Obtine datos de humedad
+                    plot(app.UIAxes2, x, g);    % Muestra la grafica de humedad
+                    hold(app.UIAxes2, 'on');
+                case 'Off'
+                    cla(app.UIAxes2, 'reset');
+            end
+        
+            %% Estados para la actuación del indicador
+            if (tem > 10 && tem < 30) && (hum > 30 && hum < 70)
+                app.AlertaLamp.Color = [0, 1, 0];
+            else 
+                app.AlertaLamp.Color = [1, 0, 0];
+            end
+        end
+    end
+    
+
+    % Callbacks that handle component events
+    methods (Access = private)
+
+        % Code that executes after component creation
+        function startupFcn(app)
+           %% Establece el timer para que ejecute la funcion de actualiza-grafica cada 1 segundo
+            app.timerObj = timer('ExecutionMode', 'fixedRate', 'Period', 1, 'TimerFcn', @(~,~) actualizar(app));
+            start(app.timerObj);
+        end
+
+        % Value changed function: ControldeltiempoKnob
+        function ControldeltiempoKnobValueChanged(app, event)
+
+        end
+    end
+
+    % Component initialization
+    methods (Access = private)
+
+        % Create UIFigure and components
+        function createComponents(app)
+
+            % Create UIFigure and hide until all components are created
+            app.UIFigure = uifigure('Visible', 'off');
+            app.UIFigure.Position = [100 100 879 446];
+            app.UIFigure.Name = 'MATLAB App';
+
+            % Create UIAxes
+            app.UIAxes = uiaxes(app.UIFigure);
+            title(app.UIAxes, 'Gráfico de Temperatura')
+            xlabel(app.UIAxes, 'Fecha')
+            ylabel(app.UIAxes, 'Temperatura')
+            zlabel(app.UIAxes, 'Z')
+            app.UIAxes.Position = [15 25 365 229];
+
+            % Create UIAxes2
+            app.UIAxes2 = uiaxes(app.UIFigure);
+            title(app.UIAxes2, 'Gráfico de Humedad')
+            xlabel(app.UIAxes2, 'Fecha')
+            ylabel(app.UIAxes2, 'Temperatura')
+            zlabel(app.UIAxes2, 'Z')
+            app.UIAxes2.Position = [497 25 365 229];
+
+            % Create ControldeltiempoKnobLabel
+            app.ControldeltiempoKnobLabel = uilabel(app.UIFigure);
+            app.ControldeltiempoKnobLabel.HorizontalAlignment = 'center';
+            app.ControldeltiempoKnobLabel.Position = [395 344 103 22];
+            app.ControldeltiempoKnobLabel.Text = 'Control del tiempo';
+
+            % Create ControldeltiempoKnob
+            app.ControldeltiempoKnob = uiknob(app.UIFigure, 'continuous');
+            app.ControldeltiempoKnob.Limits = [1 100];
+            app.ControldeltiempoKnob.MajorTicks = [1 10 20 30 40 50 60 70 80 90 100];
+            app.ControldeltiempoKnob.ValueChangedFcn = createCallbackFcn(app, @ControldeltiempoKnobValueChanged, true);
+            app.ControldeltiempoKnob.MinorTicks = [1 5 10 15 20 25 30 35 40 45 50 55 60 65 70 75 80 85 90 95 100];
+            app.ControldeltiempoKnob.Position = [417 264 60 60];
+            app.ControldeltiempoKnob.Value = 1;
+
+            % Create CanalTemperaturaSwitchLabel
+            app.CanalTemperaturaSwitchLabel = uilabel(app.UIFigure);
+            app.CanalTemperaturaSwitchLabel.HorizontalAlignment = 'center';
+            app.CanalTemperaturaSwitchLabel.Position = [144 323 107 22];
+            app.CanalTemperaturaSwitchLabel.Text = 'Canal Temperatura';
+
+            % Create CanalTemperaturaSwitch
+            app.CanalTemperaturaSwitch = uiswitch(app.UIFigure, 'slider');
+            app.CanalTemperaturaSwitch.Position = [174 301 45 20];
+
+            % Create CanalHumedadSwitch_2Label
+            app.CanalHumedadSwitch_2Label = uilabel(app.UIFigure);
+            app.CanalHumedadSwitch_2Label.HorizontalAlignment = 'center';
+            app.CanalHumedadSwitch_2Label.Position = [636 320 91 22];
+            app.CanalHumedadSwitch_2Label.Text = 'Canal Humedad';
+
+            % Create CanalHumedadSwitch_2
+            app.CanalHumedadSwitch_2 = uiswitch(app.UIFigure, 'slider');
+            app.CanalHumedadSwitch_2.Position = [658 301 45 20];
+
+            % Create HFJLabel
+            app.HFJLabel = uilabel(app.UIFigure);
+            app.HFJLabel.HorizontalAlignment = 'center';
+            app.HFJLabel.FontSize = 20;
+            app.HFJLabel.FontWeight = 'bold';
+            app.HFJLabel.Position = [38 373 740 59];
+            app.HFJLabel.Text = {'SISTEMA DE SUPERVISIÓN Y CONTROL DE VARIABLES DE UN AMBIENTE '; 'CONTROLADO A TRAVÉS DE INTERNET DE LAS COSAS.'};
+
+            % Create AlertaLampLabel
+            app.AlertaLampLabel = uilabel(app.UIFigure);
+            app.AlertaLampLabel.HorizontalAlignment = 'right';
+            app.AlertaLampLabel.Position = [427 110 36 22];
+            app.AlertaLampLabel.Text = 'Alerta';
+
+            % Create AlertaLamp
+            app.AlertaLamp = uilamp(app.UIFigure);
+            app.AlertaLamp.Position = [413 131 65 65];
+
+            % Show the figure after all components are created
+            app.UIFigure.Visible = 'on';
+        end
+    end
+
+    % App creation and deletion
+    methods (Access = public)
+
+        % Construct app
+        function app = final
+
+            % Create UIFigure and components
+            createComponents(app)
+
+            % Register the app with App Designer
+            registerApp(app, app.UIFigure)
+
+            % Execute the startup function
+            runStartupFcn(app, @startupFcn)
+
+            if nargout == 0
+                clear app
+            end
+        end
+
+        % Code that executes before app deletion
+        function delete(app)
+
+            % Delete UIFigure when app is deleted
+            delete(app.UIFigure)
+        end
+    end
+end
